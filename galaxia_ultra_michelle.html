@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Te amo mucho Mi Michelle</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:#050510; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
+  canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  .ui{
+    position:fixed; inset:0;
+    display:grid; place-items:center;
+    padding:22px;
+    pointer-events:none;
+  }
+  .card{
+    pointer-events:auto;
+    width:min(760px,92vw);
+    border-radius:22px;
+    padding:22px 18px;
+    background:rgba(10,10,25,.35);
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 24px 80px rgba(0,0,0,.55);
+    backdrop-filter: blur(12px);
+    text-align:center;
+    color:white;
+  }
+
+  h1{
+    margin:0 0 12px;
+    font-size: clamp(26px, 5.2vw, 52px);
+    letter-spacing:.2px;
+    line-height:1.08;
+    text-shadow:
+      0 0 18px rgba(200,150,255,.55),
+      0 0 42px rgba(120,210,255,.20);
+    animation: glow 2.8s ease-in-out infinite;
+  }
+  @keyframes glow{
+    0%,100%{ filter: drop-shadow(0 0 0px rgba(255,255,255,.0)); transform: translateY(0); }
+    50%{ filter: drop-shadow(0 0 14px rgba(210,160,255,.35)); transform: translateY(-1px); }
+  }
+
+  .sub{ margin:0 0 14px; opacity:.85; font-size: 14px; }
+  .row{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+
+  button{
+    border-radius:14px;
+    padding:10px 16px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.10);
+    color:#fff;
+    font-weight:700;
+    cursor:pointer;
+  }
+  button:hover{ background:rgba(255,255,255,.16); }
+  button:active{ transform: translateY(1px); }
+  button:disabled{ opacity:.55; cursor:not-allowed; }
+
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 12px; border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.18);
+    font-size:13px; opacity:.9;
+  }
+
+  .footer{
+    margin-top:14px;
+    opacity:.75;
+    font-size:13px;
+  }
+
+  .corner{
+    position:fixed; left:14px; bottom:14px;
+    padding:8px 12px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.18);
+    color:#fff;
+    font-size:12px;
+    opacity:.75;
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div class="ui">
+  <div class="card">
+    <h1>Te amo mucho Mi Michelle ✨</h1>
+    <p class="sub">Toca para iniciar la música y ver la galaxia bailar 💜</p>
+
+    <div class="row">
+      <button id="btnPlay">Reproducir</button>
+      <button id="btnPause" disabled>Pausar</button>
+      <span class="pill" id="status">🔇 Esperando…</span>
+    </div>
+
+    <div class="footer">Hecho con ❤️ por <b>Dinopollo</b></div>
+  </div>
+</div>
+
+<div class="corner" id="tip">Tip: sube el brillo ✨</div>
+
+<audio id="music" loop preload="auto">
+  <source src="cancion.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+const audioEl = document.getElementById('music');
+const btnPlay = document.getElementById('btnPlay');
+const btnPause = document.getElementById('btnPause');
+const statusEl = document.getElementById('status');
+
+let audioCtx, analyser, dataArray, srcNode;
+
+function setupAudio(){
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  const bufferLength = analyser.frequencyBinCount;
+  dataArray = new Uint8Array(bufferLength);
+
+  srcNode = audioCtx.createMediaElementSource(audioEl);
+  srcNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+
+btnPlay.addEventListener('click', async () => {
+  try{
+    setupAudio();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    await audioEl.play();
+    statusEl.textContent = '🔊 Sonando…';
+    btnPause.disabled = false;
+    btnPlay.textContent = 'Reproduciendo';
+  }catch(e){
+    statusEl.textContent = '⚠️ No se pudo reproducir';
+  }
+});
+
+btnPause.addEventListener('click', () => {
+  if (!audioCtx) return;
+  if (audioEl.paused) {
+    audioEl.play().catch(()=>{});
+    statusEl.textContent = '🔊 Sonando…';
+    btnPlay.textContent = 'Reproduciendo';
+  } else {
+    audioEl.pause();
+    statusEl.textContent = '⏸️ Pausado';
+    btnPlay.textContent = 'Reanudar';
+  }
+});
+
+const canvas = document.getElementById('bg');
+const ctx = canvas.getContext('2d', { alpha:true });
+
+let w=0,h=0,dpr=1;
+function resize(){
+  dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  w = canvas.width = Math.floor(innerWidth * dpr);
+  h = canvas.height = Math.floor(innerHeight * dpr);
+  canvas.style.width = innerWidth+'px';
+  canvas.style.height = innerHeight+'px';
+}
+addEventListener('resize', resize, { passive:true });
+resize();
+
+const rand = (a,b)=>a+Math.random()*(b-a);
+const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+
+const stars = [];
+const STAR_COUNT = Math.max(260, Math.floor((innerWidth*innerHeight)/8500));
+for(let i=0;i<STAR_COUNT;i++){
+  stars.push({
+    x: rand(0,w), y: rand(0,h),
+    z: rand(0.15, 1.0),
+    r: rand(0.6, 2.2),
+    vx: rand(-0.18, 0.18),
+    vy: rand(-0.18, 0.18),
+    tw: rand(0, Math.PI*2)
+  });
+}
+
+const hearts = [];
+function spawnHeart(){
+  const size = rand(10, 26) * dpr;
+  hearts.push({
+    x: rand(0,w),
+    y: h + rand(10, 80)*dpr,
+    vy: rand(0.35, 1.05)*dpr,
+    vx: rand(-0.2, 0.2)*dpr,
+    a: rand(0.25, 0.7),
+    s: size,
+    rot: rand(0, Math.PI*2),
+    vr: rand(-0.02, 0.02)
+  });
+}
+for(let i=0;i<14;i++) spawnHeart();
+
+const comets = [];
+function spawnComet(){
+  const startX = rand(-0.2*w, 1.2*w);
+  comets.push({
+    x: startX,
+    y: rand(-0.2*h, 0.4*h),
+    vx: rand(5.5, 9.5)*dpr,
+    vy: rand(2.5, 4.5)*dpr,
+    life: Math.floor(rand(40, 80))
+  });
+}
+let cometTimer = 0;
+
+let mx=0,my=0;
+addEventListener('pointermove', (e)=>{
+  mx = (e.clientX/innerWidth - 0.5) * 2;
+  my = (e.clientY/innerHeight - 0.5) * 2;
+},{ passive:true });
+
+function getBeat(){
+  if (!analyser || !dataArray) return 0;
+  analyser.getByteFrequencyData(dataArray);
+  let sum = 0;
+  const bins = 18;
+  for (let i=0;i<bins;i++) sum += dataArray[i];
+  return (sum / bins) / 255;
+}
+
+function drawNebula(beat){
+  const pulse = 1 + beat*0.22;
+
+  const g1 = ctx.createRadialGradient(w*0.28, h*0.40, 0, w*0.28, h*0.40, Math.max(w,h)*0.75*pulse);
+  g1.addColorStop(0, `rgba(190,130,255,${0.22 + beat*0.10})`);
+  g1.addColorStop(0.45, `rgba(120,190,255,${0.10 + beat*0.05})`);
+  g1.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g1; ctx.fillRect(0,0,w,h);
+
+  const g2 = ctx.createRadialGradient(w*0.72, h*0.62, 0, w*0.72, h*0.62, Math.max(w,h)*0.85*pulse);
+  g2.addColorStop(0, `rgba(80,220,255,${0.14 + beat*0.06})`);
+  g2.addColorStop(0.5, `rgba(255,120,200,${0.08 + beat*0.05})`);
+  g2.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g2; ctx.fillRect(0,0,w,h);
+
+  const v = ctx.createRadialGradient(w/2,h/2, 0, w/2,h/2, Math.max(w,h)*0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = v; ctx.fillRect(0,0,w,h);
+}
+
+function drawStars(beat){
+  for (const s of stars){
+    s.tw += 0.02 + s.z*0.02;
+    const twinkle = 0.55 + 0.45*Math.sin(s.tw);
+
+    s.x += (s.vx + mx*0.55) * s.z;
+    s.y += (s.vy + my*0.55) * s.z;
+
+    if (s.x < -60) s.x = w+60;
+    if (s.x > w+60) s.x = -60;
+    if (s.y < -60) s.y = h+60;
+    if (s.y > h+60) s.y = -60;
+
+    const a = clamp(0.15 + s.z*0.85, 0, 1) * (0.65 + beat*0.55) * twinkle;
+    const radius = (s.r*s.z*(1 + beat*0.35))*dpr;
+
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.arc(s.x, s.y, radius, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawHearts(beat){
+  for (let i=hearts.length-1;i>=0;i--){
+    const p = hearts[i];
+    p.y -= p.vy * (1 + beat*0.18);
+    p.x += p.vx + Math.sin((p.y/h)*Math.PI*2)*0.25*dpr*(1+beat*0.6);
+    p.rot += p.vr;
+
+    if (p.y < -120*dpr){
+      hearts.splice(i,1);
+      spawnHeart();
+      continue;
+    }
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    const scale = (p.s/22) * (1 + beat*0.12);
+
+    ctx.beginPath();
+    const s = 14 * scale;
+    ctx.moveTo(0, s*0.35);
+    ctx.bezierCurveTo(0, -s*0.25, -s, -s*0.1, -s, s*0.35);
+    ctx.bezierCurveTo(-s, s*0.9, 0, s*1.15, 0, s*1.45);
+    ctx.bezierCurveTo(0, s*1.15, s, s*0.9, s, s*0.35);
+    ctx.bezierCurveTo(s, -s*0.1, 0, -s*0.25, 0, s*0.35);
+
+    const alpha = p.a * (0.65 + beat*0.35);
+    ctx.fillStyle = `rgba(255,120,200,${alpha})`;
+    ctx.shadowColor = `rgba(255,140,220,${alpha})`;
+    ctx.shadowBlur = 18 * dpr;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawComets(beat){
+  cometTimer -= 1;
+  if (cometTimer <= 0){
+    spawnComet();
+    cometTimer = Math.floor(rand(160, 320));
+  }
+
+  for (let i=comets.length-1;i>=0;i--){
+    const c = comets[i];
+    c.life--;
+
+    c.x += c.vx * (1 + beat*0.15);
+    c.y += c.vy * (1 + beat*0.15);
+
+    const tail = 70*dpr*(1+beat*0.8);
+    const angle = Math.atan2(c.vy, c.vx);
+
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(angle);
+
+    const grad = ctx.createLinearGradient(0,0,-tail,0);
+    grad.addColorStop(0, `rgba(255,255,255,${0.85})`);
+    grad.addColorStop(0.4, `rgba(180,140,255,${0.45 + beat*0.25})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = (2.2 + beat*2.2) * dpr;
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(-tail,0);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255,255,255,${0.9})`;
+    ctx.shadowColor = `rgba(200,160,255,${0.7})`;
+    ctx.shadowBlur = 16*dpr;
+    ctx.beginPath();
+    ctx.arc(0,0,(2.6+beat*2.0)*dpr,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+
+    if (c.life <= 0 || c.x > w+200 || c.y > h+200){
+      comets.splice(i,1);
+    }
+  }
+}
+
+function frame(){
+  const beat = getBeat();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0,0,w,h);
+  drawNebula(beat);
+  drawStars(beat);
+  drawComets(beat);
+  drawHearts(beat);
+  requestAnimationFrame(frame);
+}
+frame();
+
+document.addEventListener('pointerdown', () => {
+  if (audioEl.paused) btnPlay.click();
+},{ passive:true });
+</script>
+</body>
+</html>
