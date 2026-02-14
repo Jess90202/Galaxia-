@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Te amo mucho Mi Michelle</title>
+<style>
+  :root{color-scheme:dark;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#03030a;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;touch-action:none;}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+  .ui{position:fixed;inset:0;display:grid;place-items:start center;padding:14px;pointer-events:none;}
+  .hud{
+    pointer-events:auto;
+    width:min(820px,95vw);
+    border-radius:18px;
+    padding:12px 14px;
+    background:rgba(8,8,20,.38);
+    border:1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px);
+    color:#fff;
+  }
+  .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+  h1{margin:0;font-size:clamp(16px,4.1vw,26px);font-weight:900;letter-spacing:.2px;text-shadow:0 0 18px rgba(190,140,255,.55);}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  button{
+    border-radius:14px;padding:10px 14px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.10);color:#fff;font-weight:800;cursor:pointer;
+  }
+  button:hover{background:rgba(255,255,255,.16);}
+  button:active{transform:translateY(1px);}
+  button:disabled{opacity:.55;cursor:not-allowed;}
+  .pill{
+    display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.18);
+    font-size:12px;opacity:.9;white-space:nowrap;
+  }
+  .hint{margin-top:10px;opacity:.82;font-size:12px;line-height:1.35}
+  .footer{margin-top:8px;opacity:.72;font-size:12px}
+  .corner{
+    position:fixed;right:14px;bottom:14px;
+    padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.18);color:#fff;font-size:12px;opacity:.75;pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ui">
+  <div class="hud" id="hud">
+    <div class="top">
+      <h1>Te amo mucho Mi Michelle ✨</h1>
+      <span class="pill" id="status">🔇 Toca “Reproducir”</span>
+    </div>
+    <div class="row">
+      <button id="btnPlay">Reproducir</button>
+      <button id="btnPause" disabled>Pausar</button>
+      <button id="btnReset">Reset vista</button>
+      <button id="btnHud">Ocultar panel</button>
+      <span class="pill">🔎 Pellizca para zoom</span>
+      <span class="pill">🖐️ Arrastra para mover</span>
+    </div>
+    <div class="hint">
+      🌌 Ahora sí hay <b>galaxia</b>: nubes (nebulosa), estrellas con profundidad y “vía láctea”.<br>
+      Consejo: haz zoom al planeta para leer el espiral de frases.
+    </div>
+    <div class="footer">Hecho con ❤️ por <b>Dinopollo</b></div>
+  </div>
+</div>
+
+<div class="corner" id="tip">Tip: doble toque = ocultar panel</div>
+
+<audio id="music" loop preload="auto">
+  <source src="cancion.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+const audioEl = document.getElementById('music');
+const btnPlay = document.getElementById('btnPlay');
+const btnPause = document.getElementById('btnPause');
+const statusEl = document.getElementById('status');
+const hud = document.getElementById('hud');
+
+document.getElementById('btnHud').addEventListener('click', ()=> {
+  hud.style.display = (hud.style.display === 'none') ? 'block' : 'none';
+});
+
+let audioCtx, analyser, dataArray, srcNode;
+function setupAudio(){
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  dataArray = new Uint8Array(analyser.frequencyBinCount);
+  srcNode = audioCtx.createMediaElementSource(audioEl);
+  srcNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+function beat(){
+  if (!analyser) return 0;
+  analyser.getByteFrequencyData(dataArray);
+  let sum=0, bins=20;
+  for (let i=0;i<bins;i++) sum += dataArray[i];
+  return (sum/bins)/255;
+}
+btnPlay.addEventListener('click', async ()=>{
+  try{
+    setupAudio();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    await audioEl.play();
+    statusEl.textContent = '🔊 Sonando…';
+    btnPause.disabled = false;
+    btnPlay.textContent = 'Reproduciendo';
+  }catch(e){
+    statusEl.textContent = '⚠️ No se pudo reproducir';
+  }
+});
+btnPause.addEventListener('click', ()=>{
+  if (audioEl.paused){
+    audioEl.play().catch(()=>{});
+    statusEl.textContent = '🔊 Sonando…';
+    btnPlay.textContent = 'Reproduciendo';
+  } else {
+    audioEl.pause();
+    statusEl.textContent = '⏸️ Pausado';
+    btnPlay.textContent = 'Reanudar';
+  }
+});
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha:true });
+
+let w=0,h=0,dpr=1;
+function resize(){
+  dpr = Math.max(1, Math.min(2, devicePixelRatio||1));
+  w = canvas.width = Math.floor(innerWidth * dpr);
+  h = canvas.height = Math.floor(innerHeight * dpr);
+  canvas.style.width = innerWidth + 'px';
+  canvas.style.height = innerHeight + 'px';
+}
+addEventListener('resize', resize, {passive:true});
+resize();
+
+const rand=(a,b)=>a+Math.random()*(b-a);
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+
+let cam = { x:0, y:0, zoom:1.0 };
+document.getElementById('btnReset').addEventListener('click', ()=>{ cam.x=0; cam.y=0; cam.zoom=1.0; });
+
+function toWorld(sx,sy){
+  const cx=w/2, cy=h/2;
+  return { x:(sx*dpr - cx)/cam.zoom - cam.x, y:(sy*dpr - cy)/cam.zoom - cam.y };
+}
+function applyCamera(){
+  ctx.setTransform(cam.zoom,0,0,cam.zoom, w/2 + cam.x*cam.zoom, h/2 + cam.y*cam.zoom);
+}
+
+let pointers = new Map();
+let lastPinchDist = 0;
+let lastTap = 0;
+
+canvas.addEventListener('pointerdown', (e)=>{
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (audioEl.paused) btnPlay.click();
+
+  const now = performance.now();
+  if (now - lastTap < 300){
+    hud.style.display = (hud.style.display === 'none') ? 'block' : 'none';
+  }
+  lastTap = now;
+});
+
+canvas.addEventListener('pointermove', (e)=>{
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if (pointers.size === 1){
+    const dx = (e.clientX - prev.x)*dpr;
+    const dy = (e.clientY - prev.y)*dpr;
+    cam.x += dx / cam.zoom;
+    cam.y += dy / cam.zoom;
+  } else if (pointers.size === 2){
+    const arr = Array.from(pointers.values());
+    const p1=arr[0], p2=arr[1];
+    const dist = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+    const mid = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
+
+    if (!lastPinchDist) lastPinchDist = dist;
+    const zf = dist / lastPinchDist;
+    lastPinchDist = dist;
+
+    const before = toWorld(mid.x, mid.y);
+    cam.zoom = clamp(cam.zoom * zf, 0.5, 6.0);
+    const after = toWorld(mid.x, mid.y);
+    cam.x += (after.x - before.x);
+    cam.y += (after.y - before.y);
+  }
+});
+canvas.addEventListener('pointerup', (e)=>{ pointers.delete(e.pointerId); if (pointers.size<2) lastPinchDist=0; });
+canvas.addEventListener('pointercancel', (e)=>{ pointers.delete(e.pointerId); if (pointers.size<2) lastPinchDist=0; });
+
+canvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  const zf = Math.exp(-e.deltaY*0.0015);
+  const before = toWorld(e.clientX, e.clientY);
+  cam.zoom = clamp(cam.zoom*zf, 0.5, 6.0);
+  const after = toWorld(e.clientX, e.clientY);
+  cam.x += (after.x - before.x);
+  cam.y += (after.y - before.y);
+},{passive:false});
+
+/* Star layers (screen space) */
+const layers = [
+  {count: 380, speed: 0.05, size:[0.6,1.6], alpha:[0.10,0.35]},
+  {count: 260, speed: 0.10, size:[0.8,2.2], alpha:[0.14,0.55]},
+  {count: 180, speed: 0.16, size:[1.2,2.8], alpha:[0.20,0.75]},
+];
+let starLayers = [];
+function buildStars(){
+  starLayers = layers.map(L=>{
+    const arr=[];
+    for (let i=0;i<L.count;i++){
+      arr.push({ x:rand(0,w), y:rand(0,h), r:rand(L.size[0],L.size[1])*dpr, a:rand(L.alpha[0],L.alpha[1]), tw:rand(0,Math.PI*2), z:rand(0.5,1.0) });
+    }
+    return {L, arr};
+  });
+}
+buildStars();
+addEventListener('resize', buildStars, {passive:true});
+
+const PHRASES = [
+  "Mi Michelle 💜","Mi Amor 💛","Mi Paz","Mi Tesoro 💛","Mi Mundo","Mi Cielo ✨","Mi Reina 👑",
+  "Mi Vida","Mi Luz ✨","Eres mi galaxia 🌌","Te amo infinito ♾️","Mi Todo","Única 😌","Siempre tú",
+  "Para siempre ♾️","Eres magia ✨","Me haces feliz","Te elijo","Mi Corazón 💜"
+];
+
+const spiral = [];
+function buildSpiral(){
+  spiral.length=0;
+  const points=110, turns=6.0, innerR=110, stepR=6.8;
+  for(let i=0;i<points;i++){
+    const t=(i/(points-1))*(Math.PI*2*turns);
+    const r=innerR+i*stepR;
+    spiral.push({ baseT:t, baseR:r, text:PHRASES[i%PHRASES.length], size:rand(15.5,18.5), alpha:rand(0.72,0.95), jitter:rand(-0.18,0.18) });
+  }
+}
+buildSpiral();
+
+const planet = { r:150, ringA:235, ringB:88, ringW:18 };
+
+function drawGalaxyBackground(b){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle="#03030a";
+  ctx.fillRect(0,0,w,h);
+
+  const pulse=1+b*0.25;
+  const g1=ctx.createRadialGradient(w*0.25,h*0.35,0,w*0.25,h*0.35,Math.max(w,h)*0.70*pulse);
+  g1.addColorStop(0,`rgba(190,120,255,${0.22+b*0.10})`);
+  g1.addColorStop(0.42,`rgba(120,190,255,${0.11+b*0.06})`);
+  g1.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g1; ctx.fillRect(0,0,w,h);
+
+  const g2=ctx.createRadialGradient(w*0.75,h*0.60,0,w*0.75,h*0.60,Math.max(w,h)*0.90*pulse);
+  g2.addColorStop(0,`rgba(255,120,210,${0.13+b*0.06})`);
+  g2.addColorStop(0.48,`rgba(80,220,255,${0.10+b*0.04})`);
+  g2.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g2; ctx.fillRect(0,0,w,h);
+
+  // milky way band
+  ctx.save();
+  ctx.translate(w*0.55,h*0.55);
+  ctx.rotate(-0.55);
+  const mw=ctx.createRadialGradient(0,0,0,0,0,Math.max(w,h)*0.55);
+  mw.addColorStop(0,`rgba(255,255,255,${0.06+b*0.05})`);
+  mw.addColorStop(0.35,`rgba(200,170,255,${0.05+b*0.03})`);
+  mw.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=mw;
+  ctx.beginPath();
+  ctx.ellipse(0,0,Math.max(w,h)*0.55,Math.max(w,h)*0.14,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // stars
+  for(const layer of starLayers){
+    const sp=layer.L.speed;
+    for(const s of layer.arr){
+      s.tw += 0.015*s.z;
+      const tw=0.55+0.45*Math.sin(s.tw);
+      s.y += sp*dpr*(0.35+b*0.55);
+      if(s.y>h+5) s.y=-5;
+      ctx.fillStyle=`rgba(255,255,255,${s.a*tw})`;
+      ctx.beginPath();
+      ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawPlanet(b){
+  const R=planet.r;
+
+  // back ring (y<0)
+  ctx.save();
+  ctx.globalAlpha=0.55+b*0.15;
+  ctx.strokeStyle="rgba(220,185,255,0.85)";
+  ctx.lineWidth=planet.ringW;
+  ctx.beginPath(); ctx.rect(-9999,-9999,19998,9999); ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(0,0,planet.ringA,planet.ringB,-0.35,0,Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+
+  // planet body
+  ctx.save();
+  ctx.shadowColor=`rgba(190,130,255,${0.45+b*0.35})`;
+  ctx.shadowBlur=38;
+  const body=ctx.createRadialGradient(-R*0.25,-R*0.35,R*0.12,0,0,R*1.25);
+  body.addColorStop(0,"rgba(255,255,255,0.35)");
+  body.addColorStop(0.28,"rgba(180,120,255,0.75)");
+  body.addColorStop(1,"rgba(20,5,40,1.0)");
+  ctx.fillStyle=body;
+  ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // bands
+  ctx.save();
+  ctx.globalAlpha=0.14+b*0.08;
+  ctx.strokeStyle="rgba(255,255,255,0.25)";
+  for(let i=-5;i<=5;i++){
+    const yy=(i/6)*R*0.85;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.ellipse(0,yy,R*0.92,R*0.22,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // front ring (y>=0)
+  ctx.save();
+  ctx.globalAlpha=0.70+b*0.20;
+  ctx.strokeStyle="rgba(240,220,255,0.95)";
+  ctx.lineWidth=planet.ringW;
+  ctx.beginPath(); ctx.rect(-9999,0,19998,9999); ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(0,0,planet.ringA,planet.ringB,-0.35,0,Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+let t0 = performance.now();
+function drawSpiral(now,b){
+  const rot=(now-t0)*0.00014*(1+b*0.25);
+  const wob=0.20+b*0.5;
+
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+
+  for(const p of spiral){
+    const ang=p.baseT+rot+p.jitter*Math.sin(now*0.001+p.baseT*0.22);
+    const r=p.baseR*(1+wob*0.03*Math.sin(now*0.001+p.baseT));
+    const x=Math.cos(ang)*r;
+    const y=Math.sin(ang)*r*0.70;
+
+    const dist=Math.hypot(x,y);
+    const fade=clamp(1-dist/1100,0.20,1.0);
+
+    const fs=p.size + b*3.0;
+    ctx.font=`800 ${fs}px system-ui,-apple-system,Segoe UI,Roboto,Arial`;
+    ctx.shadowColor=`rgba(200,150,255,${0.55+b*0.25})`;
+    ctx.shadowBlur=16;
+    ctx.fillStyle=`rgba(255,255,255,${p.alpha*fade})`;
+    ctx.fillText(p.text,x,y);
+  }
+}
+
+function frame(now){
+  const b=beat();
+  drawGalaxyBackground(b);
+  applyCamera();
+  drawPlanet(b);
+  drawSpiral(now,b);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
