@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Te amo mucho Mi Michelle</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:#050510; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; touch-action:none; }
+  canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  .ui{
+    position:fixed; inset:0;
+    display:grid; place-items:start center;
+    padding:16px;
+    pointer-events:none;
+  }
+  .hud{
+    pointer-events:auto;
+    width:min(760px,94vw);
+    border-radius:18px;
+    padding:14px 14px 12px;
+    background:rgba(10,10,25,.35);
+    border:1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px);
+    color:white;
+  }
+  .topline{
+    display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+  }
+  h1{
+    margin:0;
+    font-size: clamp(16px, 4.2vw, 26px);
+    font-weight:800;
+    letter-spacing:.2px;
+    text-shadow:0 0 18px rgba(200,150,255,.55);
+  }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  button{
+    pointer-events:auto;
+    border-radius:14px;
+    padding:10px 14px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.10);
+    color:#fff;
+    font-weight:700;
+    cursor:pointer;
+  }
+  button:hover{ background:rgba(255,255,255,.16); }
+  button:active{ transform: translateY(1px); }
+  button:disabled{ opacity:.55; cursor:not-allowed; }
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 12px; border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.18);
+    font-size:12px; opacity:.9;
+    white-space:nowrap;
+  }
+  .hint{
+    margin-top:10px;
+    opacity:.8;
+    font-size:12px;
+    line-height:1.35;
+  }
+  .footer{
+    margin-top:8px;
+    opacity:.7;
+    font-size:12px;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ui">
+  <div class="hud">
+    <div class="topline">
+      <h1>Te amo mucho Mi Michelle ✨</h1>
+      <span class="pill" id="status">🔇 Toca “Reproducir”</span>
+    </div>
+    <div class="row">
+      <button id="btnPlay">Reproducir</button>
+      <button id="btnPause" disabled>Pausar</button>
+      <button id="btnReset">Reset zoom</button>
+      <span class="pill">🔎 Pellizca para zoom</span>
+      <span class="pill">🖐️ Arrastra para mover</span>
+    </div>
+    <div class="hint">
+      Consejo: usa dos dedos para <b>hacer zoom</b>. Puedes acercarte al planeta y leer las frases del espiral.
+    </div>
+    <div class="footer">Hecho con ❤️ por <b>Dinopollo</b></div>
+  </div>
+</div>
+
+<audio id="music" loop preload="auto">
+  <source src="cancion.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+/* =================== AUDIO (opcional para reacción) =================== */
+const audioEl = document.getElementById('music');
+const btnPlay = document.getElementById('btnPlay');
+const btnPause = document.getElementById('btnPause');
+const statusEl = document.getElementById('status');
+
+let audioCtx, analyser, dataArray, srcNode;
+function setupAudio(){
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  dataArray = new Uint8Array(analyser.frequencyBinCount);
+  srcNode = audioCtx.createMediaElementSource(audioEl);
+  srcNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+function getBeat(){
+  if (!analyser) return 0;
+  analyser.getByteFrequencyData(dataArray);
+  let sum=0, bins=18;
+  for (let i=0;i<bins;i++) sum += dataArray[i];
+  return (sum/bins)/255; // 0..1
+}
+
+btnPlay.addEventListener('click', async () => {
+  try{
+    setupAudio();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    await audioEl.play();
+    statusEl.textContent = '🔊 Sonando…';
+    btnPause.disabled = false;
+    btnPlay.textContent = 'Reproduciendo';
+  }catch(e){
+    statusEl.textContent = '⚠️ No se pudo reproducir';
+  }
+});
+btnPause.addEventListener('click', () => {
+  if (audioEl.paused) {
+    audioEl.play().catch(()=>{});
+    statusEl.textContent = '🔊 Sonando…';
+    btnPlay.textContent = 'Reproduciendo';
+  } else {
+    audioEl.pause();
+    statusEl.textContent = '⏸️ Pausado';
+    btnPlay.textContent = 'Reanudar';
+  }
+});
+
+/* =================== CANVAS + CAMARA (PAN/ZOOM) =================== */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha:true });
+
+let w=0,h=0,dpr=1;
+function resize(){
+  dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  w = canvas.width = Math.floor(innerWidth * dpr);
+  h = canvas.height = Math.floor(innerHeight * dpr);
+  canvas.style.width = innerWidth+'px';
+  canvas.style.height = innerHeight+'px';
+}
+addEventListener('resize', resize, { passive:true });
+resize();
+
+const rand=(a,b)=>a+Math.random()*(b-a);
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+
+/* Camera transform in world units */
+let cam = { x: 0, y: 0, zoom: 1.0 };
+function resetCam(){
+  cam.x = 0; cam.y = 0; cam.zoom = 1.0;
+}
+document.getElementById('btnReset').addEventListener('click', resetCam);
+
+/* Helpers: screen <-> world */
+function toWorld(sx, sy){
+  const cx = w/2, cy = h/2;
+  return {
+    x: (sx*dpr - cx)/cam.zoom - cam.x,
+    y: (sy*dpr - cy)/cam.zoom - cam.y
+  };
+}
+function applyCamera(){
+  ctx.setTransform(cam.zoom,0,0,cam.zoom, w/2 + cam.x*cam.zoom, h/2 + cam.y*cam.zoom);
+}
+
+/* Mouse wheel zoom */
+canvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  const zoomFactor = Math.exp(-e.deltaY*0.0015);
+  const before = toWorld(e.clientX, e.clientY);
+  cam.zoom = clamp(cam.zoom*zoomFactor, 0.45, 5.0);
+  const after = toWorld(e.clientX, e.clientY);
+  cam.x += (after.x - before.x);
+  cam.y += (after.y - before.y);
+},{ passive:false });
+
+/* Touch + pointer pan + pinch */
+let pointers = new Map();
+let lastPinchDist = 0;
+
+canvas.addEventListener('pointerdown', (e)=>{
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  // quick start audio on first touch (optional)
+  if (audioEl.paused) btnPlay.click();
+});
+canvas.addEventListener('pointermove', (e)=>{
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if (pointers.size === 1){
+    // Pan
+    const dx = (e.clientX - prev.x)*dpr;
+    const dy = (e.clientY - prev.y)*dpr;
+    cam.x += dx / cam.zoom;
+    cam.y += dy / cam.zoom;
+  } else if (pointers.size === 2){
+    // Pinch zoom around midpoint
+    const arr = Array.from(pointers.values());
+    const p1 = arr[0], p2 = arr[1];
+    const dist = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+    const mid = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
+
+    if (lastPinchDist === 0) lastPinchDist = dist;
+    const zoomFactor = dist / lastPinchDist;
+    lastPinchDist = dist;
+
+    const before = toWorld(mid.x, mid.y);
+    cam.zoom = clamp(cam.zoom*zoomFactor, 0.45, 5.0);
+    const after = toWorld(mid.x, mid.y);
+    cam.x += (after.x - before.x);
+    cam.y += (after.y - before.y);
+  }
+});
+canvas.addEventListener('pointerup', (e)=>{
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) lastPinchDist = 0;
+});
+canvas.addEventListener('pointercancel', (e)=>{
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) lastPinchDist = 0;
+});
+
+/* =================== ESCENA: PLANETA + ESPIRAL + FRASES =================== */
+/* Phrases you can edit */
+const PHRASES = [
+  "Mi Michelle 💜","Mi Amor 💛","Mi Paz","Mi Tesoro 💛","Mi Mundo","Mi Cielo ✨","Mi Sueño",
+  "Mi Eterna","Mi Bonbon","Mi Bebé","Mi Diosa","Hermosa 💛","Pinchecha ✨","Te amo infinitamente ♾️",
+  "Mi Reina 👑","Mi Vida","Mi Luz ✨","Mi Pensamiento Favorito","Mi Todo","Me encantas 🥰","Única 😌",
+  "Mi Canción Favorita 🎶","Mi Niña","Eres mi galaxia 🌌","Siempre tú","Tu sonrisa ✨","Contigo","Para siempre ♾️",
+  "Eres magia ✨","Me haces feliz","Te elijo","Mi Corazón 💜"
+];
+
+/* Planet params */
+const planet = {
+  r: 120, // world units (scaled by camera)
+  ringR: 170,
+  ringW: 18,
+  hueA: 278
+};
+
+/* Spiral points with phrases attached */
+const spiral = [];
+function buildSpiral(){
+  spiral.length = 0;
+  const turns = 7.0;                 // how many rotations
+  const points = 220;                // number of phrase anchors
+  const a = 40;                      // inner radius
+  const b = 22;                      // growth per radian
+  for (let i=0;i<points;i++){
+    const t = (i/(points-1)) * (Math.PI*2*turns); // 0..2π*turns
+    const r = a + b*t*0.11;                        // spiral radius
+    const angle = t;
+    const x = Math.cos(angle)*r;
+    const y = Math.sin(angle)*r*0.72;              // slight ellipse
+    spiral.push({
+      baseT: t,
+      x, y,
+      text: PHRASES[i % PHRASES.length],
+      size: rand(12, 16),
+      jitter: rand(-0.35, 0.35),
+      alpha: rand(0.55, 0.95)
+    });
+  }
+}
+buildSpiral();
+
+/* Stars background in screen space */
+const stars = [];
+const STAR_COUNT = Math.max(240, Math.floor((innerWidth*innerHeight)/9000));
+for(let i=0;i<STAR_COUNT;i++){
+  stars.push({ x: rand(0,w), y: rand(0,h), r: rand(0.6, 2.0), tw: rand(0,Math.PI*2), z: rand(0.2,1.0) });
+}
+function drawBackground(){
+  // screen-space background (no camera transform)
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0,0,w,h);
+
+  // nebula gradients
+  const beat = getBeat();
+  const pulse = 1 + beat*0.22;
+
+  const g1 = ctx.createRadialGradient(w*0.28, h*0.40, 0, w*0.28, h*0.40, Math.max(w,h)*0.72*pulse);
+  g1.addColorStop(0, `rgba(190,130,255,${0.22 + beat*0.10})`);
+  g1.addColorStop(0.45, `rgba(120,190,255,${0.10 + beat*0.05})`);
+  g1.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g1; ctx.fillRect(0,0,w,h);
+
+  const g2 = ctx.createRadialGradient(w*0.72, h*0.62, 0, w*0.72, h*0.62, Math.max(w,h)*0.85*pulse);
+  g2.addColorStop(0, `rgba(80,220,255,${0.14 + beat*0.06})`);
+  g2.addColorStop(0.5, `rgba(255,120,200,${0.08 + beat*0.05})`);
+  g2.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g2; ctx.fillRect(0,0,w,h);
+
+  // stars
+  for (const s of stars){
+    s.tw += 0.02*s.z;
+    const a = 0.25 + 0.75*(0.5+0.5*Math.sin(s.tw));
+    ctx.fillStyle = `rgba(255,255,255,${a*0.8})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r*dpr, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+/* Draw planet (world space) */
+function drawPlanet(beat){
+  // planet body
+  const R = planet.r;
+  // glow
+  ctx.save();
+  ctx.shadowColor = `rgba(190,130,255,${0.45 + beat*0.35})`;
+  ctx.shadowBlur = 26;
+  const body = ctx.createRadialGradient(-R*0.25, -R*0.35, R*0.15, 0,0,R*1.2);
+  body.addColorStop(0, "rgba(255,255,255,0.35)");
+  body.addColorStop(0.25, "rgba(180,120,255,0.65)");
+  body.addColorStop(1, "rgba(25,5,45,1.0)");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(0,0,R,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // subtle texture bands
+  ctx.save();
+  ctx.globalAlpha = 0.18 + beat*0.10;
+  for (let i=-5;i<=5;i++){
+    const yy = (i/6)*R*0.9;
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, yy, R*0.92, R*0.25, 0, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* Draw rings (world space) */
+function drawRings(beat){
+  const RR = planet.ringR;
+  const wRing = planet.ringW;
+  // back ring
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = `rgba(220,180,255,${0.55 + beat*0.25})`;
+  ctx.lineWidth = wRing;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, RR, RR*0.42, -0.35, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* Draw spiral phrases (world space) */
+let t0 = performance.now();
+function drawSpiral(now){
+  const beat = getBeat();
+  const rot = (now - t0) * 0.00018 * (1 + beat*0.25); // rotation speed
+  const wob = 0.25 + beat*0.6;
+
+  ctx.save();
+  ctx.font = `${14}px system-ui,-apple-system,Segoe UI,Roboto,Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  for (const p of spiral){
+    const ang = p.baseT + rot + p.jitter*Math.sin((now*0.001)+p.baseT*0.3);
+    const r = Math.hypot(p.x, p.y) * (1 + wob*0.03*Math.sin(now*0.001 + p.baseT));
+    const x = Math.cos(ang)*r;
+    const y = Math.sin(ang)*r*0.72;
+
+    // size scales slightly with beat
+    const fs = (p.size + beat*3);
+    ctx.font = `700 ${fs}px system-ui,-apple-system,Segoe UI,Roboto,Arial`;
+
+    // glow
+    ctx.shadowColor = `rgba(200,150,255,${0.55 + beat*0.25})`;
+    ctx.shadowBlur = 14;
+
+    // alpha based on radius (farther = dimmer)
+    const fade = clamp(1 - (r/520), 0.25, 1.0);
+    ctx.fillStyle = `rgba(255,255,255,${p.alpha*fade})`;
+    ctx.fillText(p.text, x, y);
+  }
+  ctx.restore();
+}
+
+/* Main render */
+function render(now){
+  drawBackground();
+
+  // world
+  applyCamera();
+  // slight parallax from beat
+  const beat = getBeat();
+  ctx.save();
+  ctx.translate(0, 0);
+
+  // rings behind planet (we draw one ring; could split but looks good)
+  drawRings(beat);
+
+  // planet in center
+  drawPlanet(beat);
+
+  // spiral around planet
+  drawSpiral(now);
+
+  ctx.restore();
+
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
